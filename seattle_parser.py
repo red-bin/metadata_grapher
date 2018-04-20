@@ -75,4 +75,4 @@ for rows in parsed:
 
     count+=1
 
-fh.close()
+writer.close()
