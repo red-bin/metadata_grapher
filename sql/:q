@@ -1,0 +1,5 @@
+DROP DATABASE IF EXISTS metadata ;
+DROP OWNED BY metadata CASCADE ;
+DROP ROLE IF EXISTS metadata ;
+CREATE USER metadata WITH PASSWORD 'metadata' SUPERUSER ;
+CREATE DATABASE metadata WITH OWNER metadata;
