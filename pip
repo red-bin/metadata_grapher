@@ -1,2 +1,9 @@
 xlrd
 python-magic
+pypng
+pypdf2
+pyocr
+
+sudo apt-get install tesseract-ocr
+sudo apt-get install tesseract-ocr-eng
+sudo apt-get install tesseract-ocr-ell
