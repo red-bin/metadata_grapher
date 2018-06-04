@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import csv
 import cv2
 import numpy
 import pyocr
@@ -8,12 +9,15 @@ import pyocr.builders
 from wand.image import Image
 from wand.image import Color
 
+from pprint import pprint
+
 from PyPDF2 import PdfFileReader, PdfFileWriter
 from PIL import Image as PilImage
 from io import BytesIO
 
+from multiprocessing import Pool
 
-def page_to_png(page):
+def page_to_png(page, page_no):
     dst_pdf = PdfFileWriter()
     dst_pdf.addPage(page)
 
@@ -21,24 +25,39 @@ def page_to_png(page):
     dst_pdf.write(pdf_bytes)
     pdf_bytes.seek(0)
 
-    img = Image(file=pdf_bytes, resolution=700, background=Color("white"))
+    img = Image(file=pdf_bytes, resolution=300, background=Color("white"))
     png = img.convert("png")
-    png.save(filename='/opt/data/tmp.png')
+    png.save(filename='/opt/data/%s.png' % page_no)
 
-    image = PilImage.open('/opt/data/tmp.png')
+    image = PilImage.open('/opt/data/%s.png' % page_no)
 
     return image
 
 filepath = '/opt/data/foia/DOIT -- domain name log.pdf'
 pdf_reader = PdfFileReader(filepath)
 
-for page_no in range(len(pdf_reader.pages)):
+tools = pyocr.get_available_tools()[0]
+builder = pyocr.builders.LineBoxBuilder()
+
+fh = open('/tmp/testwriter.csv','w')
+output_writer = csv.DictWriter(fh, fieldnames=['to','from','cc','bcc','date','time'])
+output_writer.writeheader()
+
+def text_from_cell(png, left, bot, right, top):
+    axes = (left, bot, right, top)
+    txt_list = tools.image_to_string(png.crop(axes), builder=builder)
+       
+    txt = '\0'.join([t.content for t in txt_list if t])
+    txt = txt.strip('\0')
+
+    return txt
+
+def parse_page(page_no):
+    print('parsing page: %s' % page_no)
     field_poses = (0.0636363, 0.2780818, 0.587272727, 0.721818182, 0.8055, .8628, .917)
-
     pdf_page = pdf_reader.getPage(page_no)
-    break
 
-    png = page_to_png(pdf_page)
+    png = page_to_png(pdf_page, page_no)
     png = png.convert('L')
 
     page_width = png.width
@@ -58,30 +77,33 @@ for page_no in range(len(pdf_reader.pages)):
     date_start = bcc_end
     time_start = date_end
 
-    from_column = png.crop((from_start, 0, from_end, page_height))
-    to_column = png.crop((to_start, 0, to_end, page_height))
-    cc_column = png.crop((cc_start, 0, cc_end, page_height))
-    bcc_column = png.crop((bcc_start, 0, bcc_end, page_height))
-    date_column = png.crop((date_start, 0, date_end, page_height))
     time_column = png.crop((time_start, 0, time_end, page_height))
-
-    tools = pyocr.get_available_tools()[0]
-    builder = pyocr.builders.LineBoxBuilder()
     ocr_lines = tools.image_to_string(time_column, builder=builder)
 
-    row_ends = [ l.position[-1][-1] for l in ocr_lines if l.content.strip() ]
+    row_ends = [(l.position[-1][-1],l.content) for l in ocr_lines if l.content.strip() and l.content != 'TimeSent']
+    row_ends.sort(key=lambda x: x[0])
 
-    cells = []
-    top = row_ends.pop()
+    top,ts = row_ends.pop()
+    row_data = []
+
     while row_ends:
-        bot = row_ends.pop()
-        cells.append(png.crop((to_start, bot, to_end, top+10)))
-        top = bot
+        bot, bot_ts = row_ends[-1]
 
-    cell_strings = []
-    for c in cells:
-        #c.save('/tmp/test123.png')
-        cell_strings.append(tools.image_to_string(c, builder=builder))
+        from_txt = text_from_cell(png, from_start, bot, from_end, top+10)
+        to_txt = text_from_cell(png, to_start, bot, to_end, top+10)
+        cc_txt = text_from_cell(png, cc_start, bot, cc_end, top+10)
+        bcc_txt = text_from_cell(png, bcc_start, bot, bcc_end, top+10)
+        date_txt = text_from_cell(png, date_start, bot, date_end, top+10)
+        time_txt = ts
 
-    print([ [i.content for i in c ] for c in cell_strings ])
-    break
+        cell_data = {'to':to_txt, 'from': from_txt,
+                     'cc':cc_txt, 'bcc': bcc_txt,
+                     'date':date_txt, 'time':time_txt}
+
+        row_data.append(cell_data)
+        top, ts = row_ends.pop()
+
+    return reversed(row_data)
+
+pool = Pool(processes=4)
+rows = pool.map(parse_page, list(range(len(pdf_reader.pages))))
