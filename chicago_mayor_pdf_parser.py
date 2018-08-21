@@ -187,7 +187,7 @@ for row in rows:
         col_div = within_header(div['x'], div['width'])
         if col_div:
             col_divs[col_div['text']].append(div)
-        else: #this is where the problem is at
+        else:
             bad_divs.append(div)
 print("count of divs: %s" % div_count)
 print("count of bad divs: %s" % len(bad_divs))

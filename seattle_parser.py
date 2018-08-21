@@ -5,6 +5,7 @@ import csv
 import magic
 import xlrd
 
+from multiprocessing import Pool
 from os import listdir
 
 def file_prechecks(filepath):
@@ -38,13 +39,17 @@ def convert_excel_time(timeval, datetype=0):
 
 def ws_rows(ws):
     headers = ws_headers(ws)
+    ret = []
     for c in range(1, ws.nrows):
         row_dict = dict(zip(headers, ws.row_values(c)))
         row_dict['Sent'] = convert_excel_time(row_dict['Sent'])
 
-        yield row_dict
+        ret.append(row_dict)
 
-def parse_book(book):
+    return ret
+
+def parse_book(fp):
+    book = xlrd.open_workbook(fp)
     first_worksheet = book.sheets()[0]
     rows = ws_rows(first_worksheet)
 
@@ -64,8 +69,11 @@ def csv_writer(filepath='/opt/seattle_emails.csv', header=None):
 writer = csv_writer()
 files = excel_files()
 
-books = ( xlrd.open_workbook(f) for f in files )
-parsed = ( parse_book(b) for b in books )
+pool = Pool(processes=32)
+
+print("hi")
+parsed = pool.map(parse_book, files)
+print("hey")
 
 count=1
 for rows in parsed:
