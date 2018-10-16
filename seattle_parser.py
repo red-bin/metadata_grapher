@@ -5,8 +5,34 @@ import csv
 import magic
 import xlrd
 
+import re
+
 from multiprocessing import Pool
 from os import listdir
+
+email_re = re.compile('([^>]*)<([^>]*)>')
+
+def parse_rawaddr(raw_addr):
+    matched = re.match(email_re, raw_addr)
+    if matched:
+        addr, alias = map(str.rstrip, matched.groups())
+
+    else:
+        alias = None
+        addr = None
+
+    return alias, addr
+
+def parse_addrs(addr_str):
+    if not addr_str:
+        return []
+
+    raw_addrs = addr_str.split(';')
+
+    ret = []
+    ret = ( parse_rawaddr(a) for a in raw_addrs )
+
+    return(ret)
 
 def file_prechecks(filepath):
     filetype = magic.from_file(filepath)
@@ -25,7 +51,9 @@ def excel_files(datadir='/opt/data/foia/seattle_emails'):
         if file_prechecks(filepath):
             ret.append(filepath)
 
-    return ret
+    return ['/opt/data/foia/seattle_emails/PPN-SAO.xlsx']
+
+    #return ret
 
 def ws_headers(ws):
     headers = ws.row_values(0)
@@ -55,32 +83,45 @@ def parse_book(fp):
 
     return rows
 
-def csv_writer(filepath='/opt/seattle_emails.csv', header=None):
-    if not header:
-        header = ['Sender or Created by', 'Recipients in To line', 
-                  'Recipients in Cc line', 'Recipients in Bcc line', 'Sent']
-
-    fh = open(filepath, 'w') 
-    w = csv.DictWriter(fh, fieldnames=header)
-    w.writeheader()
-
     return w
 
-writer = csv_writer()
+#def graphiphy(rows):
+    #for row in rows:
+        #ccs = row['Recipients in Cc line']
+        #bccs = row['Recipients in Bcc line']
+        #tos = row['Recipients in To line']
+        #sender = row['Sender or Created by']
+        #sent_time = row['Sent']
+#
+        #sql_row = [sender, 
+
 files = excel_files()
 
-pool = Pool(processes=32)
+pool = Pool(processes=31)
 
-print("hi")
+print("Cacheing excel data")
+
 parsed = pool.map(parse_book, files)
-print("hey")
+
+print("Writing CSV")
+
+header = ['Sender or Created by', 'Recipients in To line', 
+          'Recipients in Cc line', 'Recipients in Bcc line', 'Sent']
+
+filepath = '/opt/data/seattle_ppnsao.csv'
+fh = open(filepath, 'w')
+writer = csv.DictWriter(fh, fieldnames=header)
+
+[ writer.writerows(p) for p in parsed ]
 
 count=1
 for rows in parsed:
     print("(%s/%s): %s" % (count, len(files), files[count-1]))
     if rows:
+        graph_rows = graphiphy(rows)
         writer.writerows(rows)
 
     count+=1
 
-writer.close()
+fh.close()
+
