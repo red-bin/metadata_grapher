@@ -51,9 +51,9 @@ def excel_files(datadir='/opt/data/foia/seattle_emails'):
         if file_prechecks(filepath):
             ret.append(filepath)
 
-    return ['/opt/data/foia/seattle_emails/PPN-SAO.xlsx']
+    #return ['/opt/data/foia/seattle_emails/Chapman_2_ARTS_1.xlsx']
 
-    #return ret
+    return ret
 
 def ws_headers(ws):
     headers = ws.row_values(0)
@@ -65,35 +65,22 @@ def convert_excel_time(timeval, datetype=0):
     else:
         return
 
-def ws_rows(ws):
+def parse_book(fp):
+    book = xlrd.open_workbook(fp)
+    book_name = fp.split('/')[-1].split('.')[0].replace('Chapman_','')
+
+    ws = book.sheets()[0]
+
     headers = ws_headers(ws)
-    ret = []
+    rows = []
     for c in range(1, ws.nrows):
         row_dict = dict(zip(headers, ws.row_values(c)))
         row_dict['Sent'] = convert_excel_time(row_dict['Sent'])
+        row_dict['bookname'] = book_name
 
-        ret.append(row_dict)
-
-    return ret
-
-def parse_book(fp):
-    book = xlrd.open_workbook(fp)
-    first_worksheet = book.sheets()[0]
-    rows = ws_rows(first_worksheet)
+        rows.append(row_dict)
 
     return rows
-
-    return w
-
-#def graphiphy(rows):
-    #for row in rows:
-        #ccs = row['Recipients in Cc line']
-        #bccs = row['Recipients in Bcc line']
-        #tos = row['Recipients in To line']
-        #sender = row['Sender or Created by']
-        #sent_time = row['Sent']
-#
-        #sql_row = [sender, 
 
 files = excel_files()
 
@@ -106,22 +93,10 @@ parsed = pool.map(parse_book, files)
 print("Writing CSV")
 
 header = ['Sender or Created by', 'Recipients in To line', 
-          'Recipients in Cc line', 'Recipients in Bcc line', 'Sent']
+          'Recipients in Cc line', 'Recipients in Bcc line', 'Sent', 'bookname']
 
-filepath = '/opt/data/seattle_ppnsao.csv'
+filepath = '/opt/data/seattle_emails.csv'
 fh = open(filepath, 'w')
 writer = csv.DictWriter(fh, fieldnames=header)
 
 [ writer.writerows(p) for p in parsed ]
-
-count=1
-for rows in parsed:
-    print("(%s/%s): %s" % (count, len(files), files[count-1]))
-    if rows:
-        graph_rows = graphiphy(rows)
-        writer.writerows(rows)
-
-    count+=1
-
-fh.close()
-

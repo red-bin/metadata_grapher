@@ -2,7 +2,7 @@
 
 from selenium import webdriver
 from time import sleep
-from host import environ
+from os import environ
 
 from urllib.parse import urlparse
 
@@ -39,8 +39,8 @@ email_field = driver.find_element_by_xpath('//*[@id="ASPxFormLayout1_txtUsername
 pass_field = driver.find_element_by_xpath('//*[@id="ASPxFormLayout1_txtPassword_I"]')
 
 creds = auth_creds()
-email_field.send_keys(auth_creds.__next__())
-pass_field.send_keys(auth_creds.__next__())
+email_field.send_keys(creds.__next__())
+pass_field.send_keys(creds.__next__())
 
 submit = driver.find_element_by_xpath('//*[@id="ASPxFormLayout1_btnLogin"]')
 
