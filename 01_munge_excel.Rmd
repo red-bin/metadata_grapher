@@ -1,0 +1,81 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(feather)
+library(tidygraph)
+library(ggraph)
+```
+
+```{r}
+# max_lines <- 1000
+
+x_dir <- "../../Downloads"
+
+df_files <-  file.path(x_dir, "seattle_emails") %>%
+    list.files() %>%
+    tibble(file = .) %>%
+    mutate(file2 = str_remove_all(file,
+                                  c("\\.xlsx", "Chapman_2_") %>%
+                                      paste(collapse = "|"))
+           ) %>%
+    separate(file2, into = "dept", sep = "_", extra = "drop")
+```
+
+
+```{r}
+t <- list(start = Sys.time())
+
+df_raw <- df_files$file %>%
+    file.path(x_dir, "seattle_emails", .) %>%
+    set_names(df_files$file) %>%
+    map_df(read_xlsx,
+           col_types = c(rep("text",4), "date"),
+           # n_max = max_lines,
+           .id = "file") %>%
+    set_names(c("file", "From", "to", "cc", "bcc", "time"))
+
+t$end <- Sys.time()
+
+beepr::beep()
+
+t$end - t$start
+```
+
+```{r}
+df_raw <- df_raw %>%
+    write_feather("stage/raw.feather")
+```
+
+
+
+```{r}
+df_munge <- df_raw %>%
+    mutate(index = row_number()) %>%
+    mutate_at(
+        vars(From, to, cc, bcc),
+        funs(str_remove_all(., '\\"| <.*>'))
+        ) %>%
+    left_join(df_files, by = "file") %>%
+    write_feather("stage/munge.feather") %>%
+    write_csv("stage/munge.csv")
+```
+
+```{r}
+df_munge_long <- df_munge %>%
+    gather(to:bcc, key = "field", value = "To") %>%
+    drop_na(From:To) %>%
+    separate_rows(To, sep = "; ") %>%
+    select(From, To, field, time, index, dept, file) %>%
+    write_feather("stage/munge_long.feather") %>%
+    write_csv("stage/munge_long.csv")
+```
+
