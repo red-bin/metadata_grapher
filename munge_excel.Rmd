@@ -1,0 +1,167 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(tidygraph)
+library(ggraph)
+```
+
+```{r}
+x_dir <- "../../Downloads"
+
+files <-  file.path(x_dir, "seattle_emails") %>%
+    list.files() %>%
+    tibble(file = .)
+```
+
+
+load the csv I found on Kaggle
+```{r}
+# df_sample <- 'seattle_emails.csv' %>%
+#     file.path(x_dir, .) %>%
+#     read_csv(n_max = 1000)
+```
+
+
+```{r}
+garbage <- c("\\.xlsx", "Chapman_2_") %>%
+    paste(collapse = "|")
+
+
+df_files <- files %>%
+    mutate(
+        file2 = str_remove_all(file,garbage)
+        # ,dept = str_split(file2, "_", n=2)[,1]
+           ) %>%
+    separate(file2, into = "dept", sep = "_", extra = "drop")
+```
+
+
+```{r}
+t <- list(start = Sys.time())
+
+df_raw <- df_files$file %>%
+    file.path(x_dir, "seattle_emails", .) %>%
+    set_names(df_files$file) %>%
+    map_df(read_xlsx,
+           # col_names = c("sender", "to", "cc", "bcc", "time"),
+           col_types = c(rep("text",4), "date"),
+           n_max = 10,
+           .id = "file") %>%
+    set_names(c("file", "From", "to", "cc", "bcc", "time"))
+   # map(safe_read_xlsx)
+
+t$end <- Sys.time()
+
+beepr::beep()
+
+t$end - t$start
+```
+
+
+
+```{r}
+# df_munge2 <- df_raw %>%
+#     mutate(index = row_number()) %>%
+#     gather(sender:bcc, key = "field", value = "people") %>%
+#     separate_rows(people, sep = "; ") %>%
+#     mutate(people2 = str_remove_all(people, pattern = '\\"| <.*>')
+#            # people3 = str_remove_all(people2, pattern = '\\"')
+#            )
+
+df_munge <- df_raw %>%
+    mutate(index = row_number()) %>%
+    mutate_at(
+        vars(From, to, cc, bcc),
+        funs(str_remove_all(., '\\"| <.*>'))
+        ) %>%
+    left_join(df_files, by = "file")
+```
+
+```{r}
+df_munge_long <- df_munge %>%
+    gather(to:bcc, key = "field", value = "To") %>%
+    drop_na(From:To) %>%
+    separate_rows(To, sep = "; ") %>%
+    select(From, To, field, time, index, dept, file)
+```
+
+```{r}
+g_munge <- df_munge_long %>%
+    select(From, To, field, index, dept, file) %>%
+    as_tbl_graph(directed = TRUE) %>%
+    activate(edges) %>%
+    mutate(e_mutual = edge_is_mutual()) %>%
+    activate(nodes) %>%
+    mutate(n_alone = node_is_isolated(),
+           n_key = node_is_keyplayer(k = 15),
+           n_strength = centrality_degree(),
+           cent_auth = centrality_authority(),
+           rando = n_strength * cent_auth,
+           core_in = node_coreness(mode = "in"),
+           core_out = node_coreness(mode = "out"))
+
+munge_edges <- g_munge %>% activate(edges) %>% as_tibble()
+munge_nodes <- g_munge %>% activate(nodes) %>% as_tibble()
+```
+
+```{r}
+g_filter <- g_munge %>%
+    filter(
+        cent_auth > 0.0005,
+        core_in > 10,
+        n_strength > 450
+           )  %>%
+    activate(edges) %>%
+    filter(
+        # weight > 50,
+        e_mutual
+        # e_multiple
+        ) %>%
+    activate(nodes) %>%
+    filter(
+        !n_alone
+    )
+
+top_nodes <- g_filter %>%
+    as_tibble()
+
+top_edges <- g_filter %>%
+    activate(edges) %>%
+    as_tibble()
+```
+    
+    
+```{r}
+net_cent <- g_filter %>%
+    ggraph(layout = 'kk') +
+    geom_node_point(aes(size = core_in,
+                        color = cent_auth
+                        )) +
+    geom_edge_fan(
+        # aes(width = weight),
+        arrow = arrow(
+            length = unit(4, 'mm')
+            ),
+        end_cap = circle(3, 'mm'),
+        alpha = 0.2
+        ) +
+    # geom_edge_loop() +
+    geom_node_text(aes(label = name)
+                    ,position = position_nudge(x = 0.3, y = 0.2)
+                   ,size = 4
+                    ) +
+    scale_color_continuous(guide = 'legend') +
+    theme_graph()
+net_cent
+# 
+# ggsave(plot = net_cent, filename = "network.png",
+#  
