@@ -13,13 +13,38 @@ library(ggraph)
 ```
 
 ```{r}
-df_munge_long <- read_feather("stage/munge_long.feather")
+df_munge_long <- read_csv("stage/munge_long.csv")
+```
+
+```{r}
+df_munge_long <- df_munge_long %>%
+    write_csv("stage/munge_long.csv")
+```
+
+```{r}
+df_munge_small <- df_munge_long %>%
+    select(From, To)
+```
+
+```{r}
+pryr::object_size(df_munge_long)
 ```
 
 
 ```{r}
-g_munge <- df_munge_long %>%
-    select(From, To, field, index, dept, file) %>%
+pryr::object_size(df_munge_small)
+```
+
+```{r}
+df_munge_small_summarize <- df_munge_small %>%
+    group_by_all() %>%
+    summarise(weight = n())
+```
+
+
+```{r}
+g_munge <- df_munge_small_summarize %>%
+    # select(From, To, field, index, dept, file) %>%
     as_tbl_graph(directed = TRUE) %>%
     activate(edges) %>%
     mutate(e_mutual = edge_is_mutual()) %>%
@@ -35,21 +60,25 @@ munge_nodes <- g_munge %>% activate(nodes) %>% as_tibble()
 ```
 
 ```{r}
+
 g_filter <- g_munge %>%
     filter(
-        cent_auth > 0
-        # core_in > 10,
-        ,n_strength > 10
+        # cent_auth > 3*10^-6,
+        core_in > 65,
+        core_out > 65
+        ,n_strength > 750
     )  %>%
     activate(edges) %>%
     filter(
-        # weight > 50,
-        # e_mutual
+        weight > 2,
+        e_mutual
         # e_multiple
     ) %>%
     activate(nodes) %>%
     filter(
-        !n_alone
+        !n_alone,
+        name != "Ewalt, Ken",
+        name != "parkusepermits"
     )
 
 top_nodes <- g_filter %>%
@@ -64,7 +93,7 @@ top_edges <- g_filter %>%
 ```{r}
 net_cent <- g_filter %>%
     ggraph(layout = 'kk') +
-    geom_node_point(aes(size = core_in,
+    geom_node_point(aes(size = n_strength,
                         color = cent_auth
     )) +
     geom_edge_fan(
@@ -80,10 +109,13 @@ net_cent <- g_filter %>%
                    ,position = position_nudge(x = 0.3, y = 0.2)
                    ,size = 4
     ) +
-    scale_color_continuous(guide = 'legend')
+    scale_color_continuous(guide = 'legend') +
+    theme_graph()
 
-net_cent
+# net_cent
 # 
-# ggsave(plot = net_cent, filename = "network.png",
+ggsave(plot = net_cent, filename = "charts/network.png",
+       width = 16,
+       height = 9)
 #  
 ```
