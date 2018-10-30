@@ -1,0 +1,121 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(feather)
+library(tidygraph)
+library(ggraph)
+```
+
+```{r}
+df_munge_long <- read_csv("stage/munge_long.csv")
+```
+
+```{r}
+df_munge_long <- df_munge_long %>%
+    write_csv("stage/munge_long.csv")
+```
+
+```{r}
+df_munge_small <- df_munge_long %>%
+    select(From, To)
+```
+
+```{r}
+pryr::object_size(df_munge_long)
+```
+
+
+```{r}
+pryr::object_size(df_munge_small)
+```
+
+```{r}
+df_munge_small_summarize <- df_munge_small %>%
+    group_by_all() %>%
+    summarise(weight = n())
+```
+
+
+```{r}
+g_munge <- df_munge_small_summarize %>%
+    # select(From, To, field, index, dept, file) %>%
+    as_tbl_graph(directed = TRUE) %>%
+    activate(edges) %>%
+    mutate(e_mutual = edge_is_mutual()) %>%
+    activate(nodes) %>%
+    mutate(n_alone = node_is_isolated(),
+           n_strength = centrality_degree(),
+           cent_auth = centrality_authority(),
+           core_in = node_coreness(mode = "in"),
+           core_out = node_coreness(mode = "out"))
+
+munge_edges <- g_munge %>% activate(edges) %>% as_tibble()
+munge_nodes <- g_munge %>% activate(nodes) %>% as_tibble()
+```
+
+```{r}
+
+g_filter <- g_munge %>%
+    filter(
+        # cent_auth > 3*10^-6,
+        core_in > 65,
+        core_out > 65
+        ,n_strength > 750
+    )  %>%
+    activate(edges) %>%
+    filter(
+        weight > 2,
+        e_mutual
+        # e_multiple
+    ) %>%
+    activate(nodes) %>%
+    filter(
+        !n_alone,
+        name != "Ewalt, Ken",
+        name != "parkusepermits"
+    )
+
+top_nodes <- g_filter %>%
+    as_tibble()
+
+top_edges <- g_filter %>%
+    activate(edges) %>%
+    as_tibble()
+```
+
+
+```{r}
+net_cent <- g_filter %>%
+    ggraph(layout = 'kk') +
+    geom_node_point(aes(size = n_strength,
+                        color = cent_auth
+    )) +
+    geom_edge_fan(
+        # aes(width = weight),
+        arrow = arrow(
+            length = unit(4, 'mm')
+        ),
+        end_cap = circle(3, 'mm'),
+        alpha = 0.2
+    ) +
+    # geom_edge_loop() +
+    geom_node_text(aes(label = name)
+                   ,position = position_nudge(x = 0.3, y = 0.2)
+                   ,size = 4
+    ) +
+    scale_color_continuous(guide = 'legend') +
+    theme_graph()
+
+# net_cent
+# 
+ggsave(plot = net_cent, filename = "charts/network.png",
+       width = 16,
+       height = 9)
+#  
+```
